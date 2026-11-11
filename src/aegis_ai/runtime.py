@@ -122,9 +122,7 @@ class AgentRuntime:
                         tool_count,
                     )
                 tool_count += 1
-                messages.append(
-                    await self._handle_tool(run_id, call, self.max_tool_result_chars)
-                )
+                messages.append(await self._handle_tool(run_id, call, self.max_tool_result_chars))
 
         self._record(run_id, "run_step_limit", {"steps": self.max_steps, "tool_calls": tool_count})
         return RunResult(run_id, "", RunStatus.STEP_LIMIT, self.max_steps, tool_count)
