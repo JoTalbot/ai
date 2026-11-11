@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import uuid
@@ -226,7 +227,10 @@ class AgentRuntime:
         if self.approval_handler is None:
             return False
         try:
-            result = self.approval_handler(tool, arguments)
+            if inspect.iscoroutinefunction(self.approval_handler):
+                result = await self.approval_handler(tool, arguments)
+            else:
+                result = await asyncio.to_thread(self.approval_handler, tool, arguments)
             if inspect.isawaitable(result):
                 result = await result
             return result is True

@@ -17,7 +17,7 @@ Aegis is split into five small boundaries. The model is deliberately not the aut
 
 - models.py: immutable messages, tool contracts, provider protocol types, and run results.
 - provider.py: OpenAI-compatible HTTP adapter. No vendor SDK is required.
-- registry.py: tool registration, schema export, argument validation, and invocation.
+- registry.py: tool registration, schema export, argument validation, and invocation. Synchronous handlers run in a worker thread so they do not block the event loop.
 - policy.py: deterministic risk decisions.
 - runtime.py: bounded agent loop, tool-call budget, result-size cap, and approval boundary.
 - audit.py: SQLite event journal, hash-chain verification, and HMAC-signed checkpoints.
@@ -67,3 +67,6 @@ The security workflow runs daily and on manual dispatch. It installs the project
 ## Input and provider-output budgets
 
 The runtime rejects prompts above 32,768 characters and system prompts above 16,384 characters by default. The provider adapter caps assistant content at 65,536 characters, tool calls at 128 per response, and each raw tool-argument JSON payload at 65,536 characters. Runtime validation additionally rejects duplicate or malformed tool-call identifiers, non-finite JSON numbers, non-string object keys, and aggregate tool arguments above 262,144 characters per turn. These are resource-exhaustion guardrails, not a sandbox for tool handler code.
+
+
+Synchronous tool handlers and synchronous approval callbacks are dispatched to worker threads. This protects the event loop from ordinary blocking I/O, but does not forcibly terminate a stuck thread and does not isolate handler permissions. Use a separate operating-system sandbox or container for untrusted tools.

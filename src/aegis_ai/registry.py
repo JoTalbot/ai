@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import math
 import re
@@ -57,7 +58,9 @@ class ToolRegistry:
         ]
 
     async def invoke(self, tool: ToolSpec, arguments: Mapping[str, Any]) -> Any:
-        result = tool.handler(arguments)
+        if inspect.iscoroutinefunction(tool.handler):
+            return await tool.handler(arguments)
+        result = await asyncio.to_thread(tool.handler, arguments)
         if inspect.isawaitable(result):
             return await result
         return result

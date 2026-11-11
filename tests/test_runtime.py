@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 from aegis_ai.builtins import calculator_tool
 from aegis_ai.models import ModelTurn, RiskLevel, RunStatus, ToolCall, ToolSpec
@@ -311,3 +312,38 @@ def test_runtime_rejects_non_finite_tool_arguments():
         assert "finite JSON" in str(exc)
     else:
         raise AssertionError("non-finite tool arguments were accepted")
+
+
+
+def test_sync_tool_handler_runs_off_the_event_loop_thread():
+    handler_thread = []
+    loop_thread = []
+
+    def sync_handler(arguments):
+        handler_thread.append(threading.get_ident())
+        return {"ok": True}
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "thread_check",
+            "Record the thread used for synchronous execution",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            RiskLevel.READ_ONLY,
+            sync_handler,
+        )
+    )
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("one", "thread_check", {}),)),
+        ModelTurn(content="done"),
+    )
+
+    async def run():
+        loop_thread.append(threading.get_ident())
+        await AgentRuntime(provider, registry).run("check thread")
+
+    asyncio.run(run())
+
+    assert handler_thread
+    assert loop_thread
+    assert handler_thread[0] != loop_thread[0]
