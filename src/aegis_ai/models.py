@@ -24,6 +24,7 @@ class Decision(StrEnum):
 class RunStatus(StrEnum):
     COMPLETED = "completed"
     STEP_LIMIT = "step_limit"
+    TOOL_CALL_LIMIT = "tool_call_limit"
 
 
 @dataclass(frozen=True, slots=True)

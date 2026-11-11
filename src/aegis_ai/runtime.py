@@ -38,15 +38,19 @@ class AgentRuntime:
         audit: AuditLog | None = None,
         approval_handler: ApprovalHandler | None = None,
         max_steps: int = 8,
+        max_tool_calls: int = 32,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
+        if max_tool_calls < 1:
+            raise ValueError("max_tool_calls must be at least 1")
         self.provider = provider
         self.tools = tools
         self.policy = policy or SafePolicy()
         self.audit = audit
         self.approval_handler = approval_handler
         self.max_steps = max_steps
+        self.max_tool_calls = max_tool_calls
 
     async def run(
         self,
@@ -62,7 +66,11 @@ class AgentRuntime:
             ChatMessage(role="user", content=prompt),
         ]
         tool_count = 0
-        self._record(run_id, "run_started", {"max_steps": self.max_steps})
+        self._record(
+            run_id,
+            "run_started",
+            {"max_steps": self.max_steps, "max_tool_calls": self.max_tool_calls},
+        )
 
         for step in range(1, self.max_steps + 1):
             try:
@@ -85,7 +93,28 @@ class AgentRuntime:
                 self._record(run_id, "run_completed", {"steps": step, "tool_calls": tool_count})
                 return RunResult(run_id, output, RunStatus.COMPLETED, step, tool_count)
 
-            for call in turn.tool_calls:
+            for index, call in enumerate(turn.tool_calls):
+                if tool_count >= self.max_tool_calls:
+                    remaining = turn.tool_calls[index:]
+                    self._record(
+                        run_id,
+                        "run_tool_call_limit",
+                        {"step": step, "limit": self.max_tool_calls, "remaining": len(remaining)},
+                    )
+                    for pending in remaining:
+                        messages.append(
+                            _tool_message(
+                                pending,
+                                {"error": "tool_call_limit_reached", "executed": False},
+                            )
+                        )
+                    return RunResult(
+                        run_id,
+                        "",
+                        RunStatus.TOOL_CALL_LIMIT,
+                        step,
+                        tool_count,
+                    )
                 tool_count += 1
                 messages.append(await self._handle_tool(run_id, call))
 
@@ -130,7 +159,7 @@ class AgentRuntime:
             return _tool_message(call, {"error": "blocked_by_policy", "decision": decision.value})
 
         if decision is Decision.REQUIRE_APPROVAL:
-            approved = await self._request_approval(tool, call.arguments)
+            approved = await self._request_approval(run_id, tool, call.arguments)
             if not approved:
                 self._record(
                     run_id,
@@ -167,15 +196,24 @@ class AgentRuntime:
 
     async def _request_approval(
         self,
+        run_id: str,
         tool: ToolSpec,
         arguments: Mapping[str, Any],
     ) -> bool:
         if self.approval_handler is None:
             return False
-        result = self.approval_handler(tool, arguments)
-        if inspect.isawaitable(result):
-            result = await result
-        return result is True
+        try:
+            result = self.approval_handler(tool, arguments)
+            if inspect.isawaitable(result):
+                result = await result
+            return result is True
+        except Exception as exc:
+            self._record(
+                run_id,
+                "approval_callback_failed",
+                {"tool": tool.name, "error_type": type(exc).__name__},
+            )
+            return False
 
     def _record(self, run_id: str, event: str, payload: Mapping[str, Any]) -> None:
         if self.audit is not None:

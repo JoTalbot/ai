@@ -99,6 +99,7 @@ from aegis_ai.models import RiskLevel, ToolSpec
 
 
 async def lookup_order(arguments):
+
     return {"status": "found", "order_id": arguments["order_id"]}
 
 
@@ -117,6 +118,8 @@ order_tool = ToolSpec(
 ```
 
 For tools that write data, choose `RiskLevel.WRITE` or `RiskLevel.EXTERNAL`. Aegis will not run them unless an approval callback is supplied and returns `True`. `RiskLevel.DESTRUCTIVE` is denied by the default policy. Do not label a side-effecting tool as read-only.
+
+The default runtime also limits each run to eight model turns and 32 tool calls. Both limits can be adjusted by the host application.
 
 ## Safety model
 

@@ -34,7 +34,7 @@ The model output is untrusted input. Tool names, argument JSON, and claims of us
 - Unknown tools are returned to the model as failed tool results.
 - Missing approval fails closed.
 - Provider failures are recorded by error type and re-raised.
-- The loop stops after max_steps rather than running indefinitely.
+- The loop stops after max_steps or max_tool_calls.
 - Audit write failures propagate; the runtime does not silently claim an event was recorded.
 
 ## Audit integrity

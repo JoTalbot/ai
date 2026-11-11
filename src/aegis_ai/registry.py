@@ -101,7 +101,7 @@ def _validate_value(value: Any, spec: Mapping[str, Any], path: str) -> list[str]
         valid = isinstance(value, int) and not isinstance(value, bool)
     elif expected == "number":
         valid = (
-            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+            isinstance(value, (int, float)) and not isinstance(value, bool) and _is_finite(value)
         )
     elif expected == "boolean":
         valid = isinstance(value, bool)
@@ -138,3 +138,10 @@ def _validate_value(value: Any, spec: Mapping[str, Any], path: str) -> list[str]
         errors.extend(validate_arguments(spec, value))
 
     return errors
+
+
+def _is_finite(value: int | float) -> bool:
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False

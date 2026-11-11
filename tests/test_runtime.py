@@ -168,3 +168,61 @@ def test_agent_stops_at_step_limit():
 
     assert result.status is RunStatus.STEP_LIMIT
     assert result.steps == 2
+
+
+def test_agent_stops_when_tool_call_limit_is_reached():
+    calls = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "read",
+            "Read-only test tool",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            RiskLevel.READ_ONLY,
+            lambda arguments: calls.append(True),
+        )
+    )
+    provider = ScriptedProvider(
+        ModelTurn(
+            tool_calls=(
+                ToolCall("one", "read", {}),
+                ToolCall("two", "read", {}),
+            )
+        )
+    )
+
+    result = asyncio.run(
+        AgentRuntime(provider, registry, max_tool_calls=1).run("Call the tool twice.")
+    )
+
+    assert result.status is RunStatus.TOOL_CALL_LIMIT
+    assert result.tool_calls == 1
+    assert calls == [True]
+
+
+def test_failed_approval_callback_fails_closed():
+    calls = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "mutate",
+            "Write a value",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            RiskLevel.WRITE,
+            lambda arguments: calls.append(True),
+        )
+    )
+
+    async def broken_approval(tool, arguments):
+        raise RuntimeError("approval system unavailable")
+
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("one", "mutate", {}),)),
+        ModelTurn(content="No change was made."),
+    )
+    result = asyncio.run(
+        AgentRuntime(provider, registry, approval_handler=broken_approval).run("Change it.")
+    )
+
+    assert result.output == "No change was made."
+    assert calls == []
