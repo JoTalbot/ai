@@ -17,7 +17,7 @@ Please do not publish exploitable details in a public issue. Use GitHub's privat
 - The model cannot grant itself approval by emitting text.
 - The default CLI registers only a bounded calculator tool.
 - Audit events omit prompts, completions, tool outputs, and raw argument values.
-- Tool results and total tool calls are bounded per run.
+- Prompt size, provider content, per-call arguments, aggregate per-turn arguments, tool results, and total tool calls are bounded.
 - Signed HMAC checkpoints can detect audit database rollback or tail truncation when retained independently.
 
 ## Important limitations

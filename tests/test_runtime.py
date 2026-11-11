@@ -250,3 +250,64 @@ def test_oversized_tool_result_is_replaced_with_bounded_error():
     tool_message = provider.messages[1][-1]
     assert tool_message.content == '{"error":"tool_result_exceeded_size_limit"}'
     assert len(tool_message.content) < 128
+
+
+
+def test_runtime_rejects_oversized_prompt_before_provider_call():
+    provider = ScriptedProvider(ModelTurn(content="unused"))
+    runtime = AgentRuntime(provider, ToolRegistry(), max_prompt_chars=8)
+
+    try:
+        asyncio.run(runtime.run("x" * 9))
+    except ValueError as exc:
+        assert "max_prompt_chars" in str(exc)
+    else:
+        raise AssertionError("oversized prompt was accepted")
+    assert provider.messages == []
+
+
+def test_runtime_rejects_oversized_model_content():
+    provider = ScriptedProvider(ModelTurn(content="x" * 65_537))
+    runtime = AgentRuntime(provider, ToolRegistry())
+
+    try:
+        asyncio.run(runtime.run("hello"))
+    except ValueError as exc:
+        assert "65536" in str(exc)
+    else:
+        raise AssertionError("oversized model output was accepted")
+
+
+def test_runtime_rejects_duplicate_tool_call_ids():
+    provider = ScriptedProvider(
+        ModelTurn(
+            tool_calls=(
+                ToolCall("duplicate", "calculator", {"expression": "1+1"}),
+                ToolCall("duplicate", "calculator", {"expression": "2+2"}),
+            )
+        )
+    )
+    registry = ToolRegistry()
+    registry.register(calculator_tool())
+
+    try:
+        asyncio.run(AgentRuntime(provider, registry).run("calculate"))
+    except ValueError as exc:
+        assert "duplicate" in str(exc)
+    else:
+        raise AssertionError("duplicate tool-call IDs were accepted")
+
+
+def test_runtime_rejects_non_finite_tool_arguments():
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("one", "calculator", {"expression": float("nan")}),))
+    )
+    registry = ToolRegistry()
+    registry.register(calculator_tool())
+
+    try:
+        asyncio.run(AgentRuntime(provider, registry).run("calculate"))
+    except ValueError as exc:
+        assert "finite JSON" in str(exc)
+    else:
+        raise AssertionError("non-finite tool arguments were accepted")

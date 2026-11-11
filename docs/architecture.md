@@ -62,3 +62,8 @@ The environment variable is a UTF-8 secret and must contain at least 32 bytes. D
 ## Scheduled verification
 
 The security workflow runs daily and on manual dispatch. It installs the project and development dependencies, audits the installed Python environment with pip-audit, and repeats lint, formatting, compilation, and tests. CodeQL analyzes Python changes on pushes, pull requests, and weekly schedule. Dependabot proposes dependency and GitHub Actions updates weekly; updates are not auto-merged.
+
+
+## Input and provider-output budgets
+
+The runtime rejects prompts above 32,768 characters and system prompts above 16,384 characters by default. The provider adapter caps assistant content at 65,536 characters, tool calls at 128 per response, and each raw tool-argument JSON payload at 65,536 characters. Runtime validation additionally rejects duplicate or malformed tool-call identifiers, non-finite JSON numbers, non-string object keys, and aggregate tool arguments above 262,144 characters per turn. These are resource-exhaustion guardrails, not a sandbox for tool handler code.
