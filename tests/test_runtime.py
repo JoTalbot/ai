@@ -253,7 +253,6 @@ def test_oversized_tool_result_is_replaced_with_bounded_error():
     assert len(tool_message.content) < 128
 
 
-
 def test_runtime_rejects_oversized_prompt_before_provider_call():
     provider = ScriptedProvider(ModelTurn(content="unused"))
     runtime = AgentRuntime(provider, ToolRegistry(), max_prompt_chars=8)

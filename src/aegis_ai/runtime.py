@@ -293,7 +293,6 @@ def _tool_message(call: ToolCall, result: Any, max_chars: int) -> ChatMessage:
     )
 
 
-
 def _validate_model_turn(turn: ModelTurn) -> None:
     """Reject oversized or structurally invalid provider output before it enters the loop."""
     if not isinstance(turn, ModelTurn):
