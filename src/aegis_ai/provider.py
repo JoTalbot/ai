@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from aegis_ai.models import ChatMessage, ModelTurn, ToolCall
 
@@ -25,6 +26,22 @@ class OpenAICompatibleProvider:
         api_key: str | None = None,
         timeout_seconds: float = 60.0,
     ) -> None:
+        parts = urlsplit(base_url)
+        if parts.scheme not in {"http", "https"} or not parts.hostname:
+            raise ValueError("base_url must be an absolute HTTP or HTTPS URL")
+        try:
+            _ = parts.port
+        except ValueError as exc:
+            raise ValueError("base_url contains an invalid port") from exc
+        if parts.username is not None or parts.password is not None:
+            raise ValueError("credentials must not be embedded in base_url")
+        if parts.query or parts.fragment:
+            raise ValueError("base_url must not contain a query string or fragment")
+        if not model.strip():
+            raise ValueError("model must not be empty")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be a positive finite number")
+
         self.base_url = base_url.rstrip("/") + "/"
         self.model = model
         self.api_key = api_key
@@ -69,7 +86,7 @@ class OpenAICompatibleProvider:
             raise ProviderError("provider response exceeded the 8 MiB safety limit")
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ProviderError("provider returned invalid JSON") from exc
         if not isinstance(data, dict):
             raise ProviderError("provider response must be a JSON object")
@@ -89,6 +106,7 @@ class OpenAICompatibleProvider:
         if not isinstance(raw_calls, list):
             raise ProviderError("provider tool_calls must be a list")
         calls: list[ToolCall] = []
+        seen_ids: set[str] = set()
         for index, item in enumerate(raw_calls):
             if not isinstance(item, dict):
                 raise ProviderError("provider returned an invalid tool call")
@@ -101,13 +119,16 @@ class OpenAICompatibleProvider:
                 raise ProviderError("provider returned invalid tool argument JSON") from exc
             if not isinstance(arguments, dict):
                 raise ProviderError("tool call arguments must decode to a JSON object")
-            calls.append(
-                ToolCall(
-                    id=str(item.get("id") or f"call-{index}"),
-                    name=str(function.get("name") or ""),
-                    arguments=arguments,
-                )
-            )
+            call_id = item.get("id") or f"call-{index}"
+            name = function.get("name")
+            if not isinstance(call_id, str) or not call_id.strip():
+                raise ProviderError("provider returned an empty tool call id")
+            if call_id in seen_ids:
+                raise ProviderError("provider returned duplicate tool call ids")
+            if not isinstance(name, str) or not name.strip():
+                raise ProviderError("provider returned an empty tool name")
+            seen_ids.add(call_id)
+            calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
 
         raw_usage = data.get("usage") or {}
         if not isinstance(raw_usage, dict):
@@ -115,7 +136,7 @@ class OpenAICompatibleProvider:
         usage = {
             key: value
             for key, value in raw_usage.items()
-            if isinstance(value, int) and not isinstance(value, bool)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0
         }
         return ModelTurn(content=content, tool_calls=tuple(calls), usage=usage)
 
