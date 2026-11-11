@@ -117,40 +117,46 @@ class AuditLog:
             finally:
                 self._close(connection)
 
+    def _snapshot(self) -> tuple[AuditVerification, int | None, str]:
+        # Read the chain and its tail in one SQLite snapshot. Without this transaction,
+        # a concurrent append could make a freshly created checkpoint internally inconsistent.
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute("BEGIN")
+                rows = connection.execute(
+                    """
+                    SELECT id, run_id, event, timestamp, payload_json, previous_hash, event_hash
+                    FROM audit_events ORDER BY id ASC
+                    """
+                ).fetchall()
+                verification = _verify_rows(rows)
+                last_id = rows[-1]["id"] if rows else None
+                last_hash = rows[-1]["event_hash"] if rows else _GENESIS
+                connection.commit()
+                return verification, last_id, last_hash
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                self._close(connection)
+
     def verify(self) -> AuditVerification:
-        connection = self._connect()
-        try:
-            rows = connection.execute(
-                """
-                SELECT id, run_id, event, timestamp, payload_json, previous_hash, event_hash
-                FROM audit_events ORDER BY id ASC
-                """
-            ).fetchall()
-        finally:
-            self._close(connection)
-        return _verify_rows(rows)
+        return self._snapshot()[0]
 
     def create_checkpoint(self, signing_key: bytes) -> dict[str, Any]:
         """Create an HMAC-authenticated snapshot for storage outside the audit host."""
         _validate_signing_key(signing_key)
-        verification = self.verify()
+        verification, last_id, last_hash = self._snapshot()
         if not verification.ok:
             raise ValueError(f"cannot checkpoint an invalid audit chain: {verification.error}")
-
-        connection = self._connect()
-        try:
-            row = connection.execute(
-                "SELECT id, event_hash FROM audit_events ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-        finally:
-            self._close(connection)
 
         payload = {
             "version": _CHECKPOINT_VERSION,
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "event_count": verification.event_count,
-            "last_event_id": row["id"] if row else None,
-            "last_event_hash": row["event_hash"] if row else _GENESIS,
+            "last_event_id": last_id,
+            "last_event_hash": last_hash,
         }
         signature = hmac.new(signing_key, _canonical(payload).encode("utf-8"), hashlib.sha256)
         return {**payload, "signature": signature.hexdigest()}
@@ -175,19 +181,9 @@ class AuditLog:
         if payload.get("version") != _CHECKPOINT_VERSION:
             return AuditVerification(False, 0, "unsupported checkpoint version")
 
-        verification = self.verify()
+        verification, current_id, current_hash = self._snapshot()
         if not verification.ok:
             return verification
-
-        connection = self._connect()
-        try:
-            row = connection.execute(
-                "SELECT id, event_hash FROM audit_events ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-        finally:
-            self._close(connection)
-        current_id = row["id"] if row else None
-        current_hash = row["event_hash"] if row else _GENESIS
         if (
             payload.get("event_count") != verification.event_count
             or payload.get("last_event_id") != current_id
