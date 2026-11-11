@@ -14,6 +14,12 @@ from urllib.parse import urljoin, urlsplit
 from aegis_ai.models import ChatMessage, ModelTurn, ToolCall
 
 
+_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+_MAX_CONTENT_CHARS = 65_536
+_MAX_TOOL_CALLS = 128
+_MAX_ARGUMENT_CHARS = 65_536
+
+
 class ProviderError(RuntimeError):
     pass
 
@@ -67,7 +73,7 @@ class OpenAICompatibleProvider:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "aegis-ai-runtime/0.3.0",
+            "User-Agent": "aegis-ai-runtime/0.4.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -75,14 +81,14 @@ class OpenAICompatibleProvider:
         request = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                raw = response.read(8 * 1024 * 1024 + 1)
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as exc:
             detail = exc.read(512).decode("utf-8", errors="replace")
             raise ProviderError(f"provider returned HTTP {exc.code}: {detail}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ProviderError(f"could not reach model provider: {exc}") from exc
 
-        if len(raw) > 8 * 1024 * 1024:
+        if len(raw) > _MAX_RESPONSE_BYTES:
             raise ProviderError("provider response exceeded the 8 MiB safety limit")
         try:
             data = json.loads(raw)
@@ -101,10 +107,14 @@ class OpenAICompatibleProvider:
         content = choice.get("content")
         if content is not None and not isinstance(content, str):
             raise ProviderError("provider message content must be a string or null")
+        if isinstance(content, str) and len(content) > _MAX_CONTENT_CHARS:
+            raise ProviderError("provider message content exceeded the 65536-character limit")
 
         raw_calls = choice.get("tool_calls") or []
         if not isinstance(raw_calls, list):
             raise ProviderError("provider tool_calls must be a list")
+        if len(raw_calls) > _MAX_TOOL_CALLS:
+            raise ProviderError("provider returned too many tool calls in one response")
         calls: list[ToolCall] = []
         seen_ids: set[str] = set()
         for index, item in enumerate(raw_calls):
@@ -113,20 +123,32 @@ class OpenAICompatibleProvider:
             function = item.get("function") or {}
             if not isinstance(function, dict):
                 raise ProviderError("provider returned an invalid tool function")
+            raw_arguments = function.get("arguments") or "{}"
+            if not isinstance(raw_arguments, str):
+                raise ProviderError("tool call arguments must be a JSON string")
+            if len(raw_arguments) > _MAX_ARGUMENT_CHARS:
+                raise ProviderError("tool call arguments exceeded the 65536-character limit")
             try:
-                arguments = json.loads(function.get("arguments") or "{}")
-            except (json.JSONDecodeError, TypeError) as exc:
+                arguments = json.loads(
+                    raw_arguments,
+                    parse_constant=lambda value: (_ for _ in ()).throw(
+                        ValueError(f"invalid JSON constant: {value}")
+                    ),
+                )
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise ProviderError("provider returned invalid tool argument JSON") from exc
             if not isinstance(arguments, dict):
                 raise ProviderError("tool call arguments must decode to a JSON object")
             call_id = item.get("id") or f"call-{index}"
             name = function.get("name")
-            if not isinstance(call_id, str) or not call_id.strip():
-                raise ProviderError("provider returned an empty tool call id")
+            if not isinstance(call_id, str) or not call_id.strip() or len(call_id) > 128:
+                raise ProviderError("provider returned an invalid tool call id")
             if call_id in seen_ids:
                 raise ProviderError("provider returned duplicate tool call ids")
             if not isinstance(name, str) or not name.strip():
                 raise ProviderError("provider returned an empty tool name")
+            if len(name) > 64:
+                raise ProviderError("provider returned an invalid tool name")
             seen_ids.add(call_id)
             calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
 
