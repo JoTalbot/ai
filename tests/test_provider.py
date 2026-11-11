@@ -58,9 +58,7 @@ def test_provider_parses_tool_calls_and_sends_auth(monkeypatch):
         timeout_seconds=3,
     )
 
-    result = asyncio.run(
-        provider.complete([ChatMessage(role="user", content="calculate")], [])
-    )
+    result = asyncio.run(provider.complete([ChatMessage(role="user", content="calculate")], []))
 
     assert captured["url"] == "http://localhost:8000/v1/chat/completions"
     assert captured["timeout"] == 3
