@@ -38,7 +38,7 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Check formatting
-        run: ruff format --check .
+        run: ruff format --check --diff .
       - name: Compile
         run: python -m compileall -q src
       - name: Test
