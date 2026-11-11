@@ -2,25 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
+from enum import StrEnum
+from typing import Any, Protocol
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     READ_ONLY = "read_only"
     WRITE = "write"
     EXTERNAL = "external"
     DESTRUCTIVE = "destructive"
 
 
-class Decision(str, Enum):
+class Decision(StrEnum):
     ALLOW = "allow"
     REQUIRE_APPROVAL = "require_approval"
     DENY = "deny"
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     COMPLETED = "completed"
     STEP_LIMIT = "step_limit"
 

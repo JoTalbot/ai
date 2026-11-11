@@ -7,10 +7,11 @@ import hmac
 import json
 import sqlite3
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 
 _GENESIS = "0" * 64
@@ -32,7 +33,11 @@ class AuditLog:
         self._lock = threading.Lock()
         self._memory_connection: sqlite3.Connection | None = None
         if self._memory:
-            self._memory_connection = sqlite3.connect(":memory:", timeout=10, check_same_thread=False)
+            self._memory_connection = sqlite3.connect(
+                ":memory:",
+                timeout=10,
+                check_same_thread=False,
+            )
             self._memory_connection.row_factory = sqlite3.Row
         else:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)

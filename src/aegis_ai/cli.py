@@ -69,7 +69,11 @@ def _doctor(settings: Settings) -> int:
     print("Aegis configuration: valid")
     print(f"Provider: {settings.base_url}")
     print(f"Model: {settings.model}")
-    key_status = "configured" if settings.api_key else "not configured (may be fine for local gateways)"
+    key_status = (
+        "configured"
+        if settings.api_key
+        else "not configured (may be fine for local gateways)"
+    )
     print(f"API key: {key_status}")
     print(f"Audit database: {settings.audit_db}")
     print("Network check: skipped")
