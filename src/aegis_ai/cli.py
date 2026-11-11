@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -37,6 +39,12 @@ def _parser() -> argparse.ArgumentParser:
     audit_commands = audit.add_subparsers(dest="audit_command", required=True)
     verify = audit_commands.add_parser("verify", help="verify the audit hash chain")
     verify.add_argument("--db", type=Path)
+    verify.add_argument("--checkpoint", type=Path)
+    verify.add_argument("--key-env", default="AEGIS_AUDIT_CHECKPOINT_KEY")
+    checkpoint = audit_commands.add_parser("checkpoint", help="create a signed audit checkpoint")
+    checkpoint.add_argument("--db", type=Path)
+    checkpoint.add_argument("--output", type=Path, required=True)
+    checkpoint.add_argument("--key-env", default="AEGIS_AUDIT_CHECKPOINT_KEY")
     return parser
 
 
@@ -49,7 +57,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "doctor":
             return _doctor(settings)
         if args.command == "audit":
-            return _verify_audit(args.db or settings.audit_db)
+            database = args.db or settings.audit_db
+            if args.audit_command == "checkpoint":
+                return _create_audit_checkpoint(database, args.output, args.key_env)
+            return _verify_audit(database, args.checkpoint, args.key_env)
         if args.command == "run":
             if args.max_steps < 1:
                 raise ConfigurationError("--max-steps must be at least 1")
@@ -81,13 +92,49 @@ def _doctor(settings: Settings) -> int:
     return 0
 
 
-def _verify_audit(path: Path) -> int:
-    result = AuditLog(path).verify()
+def _checkpoint_key(environment_name: str) -> bytes:
+    value = os.environ.get(environment_name)
+    if not value:
+        raise ConfigurationError(
+            f"checkpoint key is missing; set the {environment_name} environment variable"
+        )
+    key = value.encode("utf-8")
+    if len(key) < 32:
+        raise ConfigurationError(f"{environment_name} must contain at least 32 UTF-8 bytes")
+    return key
+
+
+def _create_audit_checkpoint(database: Path, output: Path, key_env: str) -> int:
+    checkpoint = AuditLog(database).create_checkpoint(_checkpoint_key(key_env))
+    output = output.expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(output.name + ".tmp")
+    try:
+        temporary.write_text(json.dumps(checkpoint, indent=2) + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
+        temporary.replace(output)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    print(f"Signed audit checkpoint written: {output}")
+    print(f"Events covered: {checkpoint['event_count']}")
+    print("Store this file and its signing key outside the audit host.")
+    return 0
+
+
+def _verify_audit(database: Path, checkpoint_path: Path | None, key_env: str) -> int:
+    audit = AuditLog(database)
+    if checkpoint_path is None:
+        result = audit.verify()
+    else:
+        checkpoint = json.loads(checkpoint_path.expanduser().read_text(encoding="utf-8"))
+        result = audit.verify_checkpoint(checkpoint, _checkpoint_key(key_env))
     if result.ok:
-        print(f"Audit chain valid: {result.event_count} event(s)")
+        label = "Audit chain and signed checkpoint valid" if checkpoint_path else "Audit chain valid"
+        print(f"{label}: {result.event_count} event(s)")
         return 0
     print(
-        f"Audit chain INVALID after {result.event_count} event(s): {result.error}",
+        f"Audit verification INVALID after {result.event_count} event(s): {result.error}",
         file=sys.stderr,
     )
     return 1

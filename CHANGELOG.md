@@ -1,20 +1,18 @@
 # Changelog
 
-All notable changes to Aegis AI Runtime are documented here.
+## 0.3.0 - 2026-11-11
+
+- Add HMAC-SHA256 signed audit checkpoints that can be stored outside the runtime host.
+- Detect audit database tail truncation when verifying against an independently retained checkpoint.
+- Add CLI commands to create and verify signed audit checkpoints.
+- Add CodeQL static analysis and weekly Dependabot update proposals.
 
 ## 0.2.0 - 2026-11-11
 
-### Security and runtime hardening
+- Harden provider endpoint and response validation.
+- Bound tool-call counts and tool-result sizes.
+- Add scheduled dependency auditing and architecture/security documentation.
 
-- Validate provider endpoint URLs, credentials, query strings, fragments, model names, and finite positive timeouts.
-- Reject duplicate tool-call IDs and empty tool names from provider responses.
-- Ignore negative and boolean token counters in provider usage metadata.
-- Bound tool-result payloads before they are returned to the model.
-- Expose the global tool-call budget through the CLI.
-- Add provider validation, oversized-response, duplicate-ID, and bounded-tool-output tests.
-- Add a scheduled dependency audit and full verification workflow.
+## 0.1.0
 
-### Operational notes
-
-- The runtime still executes registered Python handlers inside the host process.
-- The scheduled security workflow audits installed Python dependencies; it is not a substitute for OS-level isolation or a complete software supply-chain review.
+- Initial provider-agnostic agent runtime, safe tool policy, and SQLite audit journal.

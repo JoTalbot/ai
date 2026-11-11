@@ -20,7 +20,7 @@ Aegis is split into five small boundaries. The model is deliberately not the aut
 - registry.py: tool registration, schema export, argument validation, and invocation.
 - policy.py: deterministic risk decisions.
 - runtime.py: bounded agent loop, tool-call budget, result-size cap, and approval boundary.
-- audit.py: SQLite event journal and hash-chain verification.
+- audit.py: SQLite event journal, hash-chain verification, and HMAC-signed checkpoints.
 - builtins.py: a safe, bounded calculator demonstration.
 - cli.py: local developer interface.
 
@@ -42,10 +42,23 @@ Tool results are bounded before being returned to the model. This prevents a han
 - Tool results exceeding max_tool_result_chars are replaced with a fixed error response.
 - Audit write failures propagate; the runtime does not silently claim an event was recorded.
 
-## Audit integrity
+## Audit integrity and independent checkpoints
 
-Each row hashes a canonical JSON representation of its event fields plus the previous row hash. Verification checks both the previous-hash link and the event hash. This detects edits, deletions, reordering, and broken links among retained rows. It cannot detect removal of the final tail without an independent checkpoint, or prove that an attacker with full control of the host did not replace the entire database. Signed checkpoints stored separately are required for those threat models.
+Each row hashes a canonical JSON representation of its event fields plus the previous row hash. Verification checks both the previous-hash link and the event hash. This detects edits, deletions, reordering, and broken links among retained rows.
+
+A signed checkpoint captures the event count, final row ID, and final event hash. It is authenticated with HMAC-SHA256 using a key of at least 32 bytes. Keep both the checkpoint and the key outside the runtime host, ideally in separate access-controlled systems. A checkpoint detects rollback or tail truncation relative to the retained snapshot. It does not protect against an attacker who can replace both the database and the external checkpoint, steal the signing key, or alter the runtime before a checkpoint is created. HMAC provides shared-secret authenticity, not public verifiability or non-repudiation.
+
+Create and verify checkpoints:
+
+```bash
+export AEGIS_AUDIT_CHECKPOINT_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+aegis audit checkpoint --output /secure/external/aegis-checkpoint.json
+# Copy the checkpoint and protect the key outside the audit host.
+aegis audit verify --checkpoint /secure/external/aegis-checkpoint.json
+```
+
+The environment variable is a UTF-8 secret and must contain at least 32 bytes. Do not commit it, place it in shell history, or store the checkpoint beside the database if both are exposed to the same attacker. The CLI writes checkpoint files with owner-only permissions where supported.
 
 ## Scheduled verification
 
-The security workflow runs daily and on manual dispatch. It installs the project and development dependencies, audits the installed Python environment with pip-audit, and repeats lint, formatting, compilation, and tests. It reports dependency vulnerabilities by failing the workflow; it does not automatically upgrade packages or deploy changes.
+The security workflow runs daily and on manual dispatch. It installs the project and development dependencies, audits the installed Python environment with pip-audit, and repeats lint, formatting, compilation, and tests. CodeQL analyzes Python changes on pushes, pull requests, and weekly schedule. Dependabot proposes dependency and GitHub Actions updates weekly; updates are not auto-merged.

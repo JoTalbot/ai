@@ -6,7 +6,7 @@ Aegis gives an agent a small, explicit execution boundary: a model can propose t
 
 It is designed to work with local model gateways and hosted OpenAI-compatible APIs without binding the core runtime to one vendor.
 
-> **Status:** early release candidate (0.2.0). The core is intentionally small and conservative. Review the security model before connecting tools that can change external state.
+> **Status:** early release candidate (0.3.0). The core is intentionally small and conservative. Review the security model before connecting tools that can change external state.
 
 ## Why Aegis
 
@@ -16,6 +16,7 @@ Most agent demos put model output and real-world actions in the same loop. Aegis
 - **Safe by default:** read-only tools may run; write and external tools require an explicit approval callback; destructive tools are denied by default.
 - **Validated tool inputs:** a dependency-free JSON Schema subset rejects missing, mistyped, and unexpected arguments before a handler runs.
 - **Auditable:** events are written to SQLite with a SHA-256 hash chain. Prompts, model responses, tool outputs, and argument values are not stored by default.
+- **Independent audit checkpoints:** HMAC-SHA256 checkpoints let an operator detect rollback or tail truncation when the checkpoint and signing key are retained outside the runtime host.
 - **Local-first:** point the provider at a local OpenAI-compatible gateway. No account or vendor SDK is required by the core.
 - **Small attack surface:** no shell, browser, filesystem, or network tools are registered automatically.
 
@@ -99,7 +100,6 @@ from aegis_ai.models import RiskLevel, ToolSpec
 
 
 async def lookup_order(arguments):
-
     return {"status": "found", "order_id": arguments["order_id"]}
 
 
@@ -134,15 +134,20 @@ Approval is a host-application responsibility. Aegis does not treat model text s
 
 The included CLI does not register side-effecting tools. A custom host may provide an interactive approval callback; non-interactive runs fail closed.
 
-## Audit trail
+## Audit trail and signed checkpoints
 
 Each audit event contains a timestamp, run identifier, event type, a minimal metadata payload, the previous event hash, and its own hash. Verification detects changes to retained events and broken links in the chain.
 
-The default event payload is deliberately metadata-only. It does not store prompts, completions, tool results, or raw tool arguments. The chain is tamper-evident, not tamper-proof: an attacker able to replace the database and every trusted copy can rewrite it. Tail truncation also requires an independently retained checkpoint to detect. For high-assurance deployments, export signed checkpoints to storage controlled separately from the runtime.
+For stronger rollback detection, create a signed checkpoint and store it outside the machine hosting the database:
 
 ```bash
-aegis audit verify
+# Supply a random secret from a secret manager, not a checked-in file.
+export AEGIS_AUDIT_CHECKPOINT_KEY="<at-least-32-random-UTF-8-bytes>"
+aegis audit checkpoint --output /secure/external/aegis-checkpoint.json
+aegis audit verify --checkpoint /secure/external/aegis-checkpoint.json
 ```
+
+The key must contain at least 32 UTF-8 bytes. Keep the checkpoint and key outside the audit host. HMAC is a shared-secret integrity check, not a digital signature or proof to third parties. A local chain without an external checkpoint cannot detect removal of its final rows.
 
 ## Configuration
 
@@ -153,6 +158,7 @@ aegis audit verify
 | `AEGIS_API_KEY` | unset | Optional API key |
 | `AEGIS_TIMEOUT_SECONDS` | `60` | HTTP timeout |
 | `AEGIS_AUDIT_DB` | `~/.aegis/audit.db` | SQLite audit database |
+| `AEGIS_AUDIT_CHECKPOINT_KEY` | unset | External checkpoint HMAC key (32+ UTF-8 bytes) |
 
 ## Development
 
@@ -163,7 +169,7 @@ ruff format --check .
 pytest
 ```
 
-The CI workflow runs lint, formatting, compilation, and tests across supported Python versions. A separate daily workflow audits installed dependencies with `pip-audit` and repeats the quality checks. Both workflows can also be started manually.
+CI runs lint, formatting, compilation, and tests across supported Python versions. A separate daily workflow audits installed dependencies with `pip-audit`. CodeQL analyzes Python changes; Dependabot proposes weekly dependency and GitHub Actions updates. Updates are reviewed and are not automatically merged.
 
 ## Project principles
 

@@ -4,7 +4,6 @@ from aegis_ai.audit import AuditLog, AuditVerification
 from aegis_ai.models import (
     ChatMessage,
     Decision,
-    ModelProvider,
     ModelTurn,
     RiskLevel,
     RunResult,
@@ -13,9 +12,11 @@ from aegis_ai.models import (
     ToolSpec,
 )
 from aegis_ai.policy import SafePolicy
-from aegis_ai.provider import OpenAICompatibleProvider, ProviderError
-from aegis_ai.registry import ToolRegistry
+from aegis_ai.provider import OpenAICompatibleProvider
+from aegis_ai.registry import ToolRegistrationError, ToolRegistry
 from aegis_ai.runtime import AgentRuntime
+
+__version__ = "0.3.0"
 
 __all__ = [
     "AgentRuntime",
@@ -23,17 +24,14 @@ __all__ = [
     "AuditVerification",
     "ChatMessage",
     "Decision",
-    "ModelProvider",
     "ModelTurn",
     "OpenAICompatibleProvider",
-    "ProviderError",
     "RiskLevel",
     "RunResult",
     "RunStatus",
     "SafePolicy",
     "ToolCall",
+    "ToolRegistrationError",
     "ToolRegistry",
     "ToolSpec",
 ]
-
-__version__ = "0.2.0"

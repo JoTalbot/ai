@@ -1,4 +1,4 @@
-"""SQLite audit journal with a verifiable SHA-256 hash chain."""
+"""SQLite audit journal with a verifiable SHA-256 hash chain and signed checkpoints."""
 
 from __future__ import annotations
 
@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-
 _GENESIS = "0" * 64
 _SENSITIVE_MARKERS = ("password", "secret", "token", "api_key", "authorization", "credential")
+_CHECKPOINT_VERSION = 1
+_MIN_SIGNING_KEY_BYTES = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,9 +35,7 @@ class AuditLog:
         self._memory_connection: sqlite3.Connection | None = None
         if self._memory:
             self._memory_connection = sqlite3.connect(
-                ":memory:",
-                timeout=10,
-                check_same_thread=False,
+                ":memory:", timeout=10, check_same_thread=False
             )
             self._memory_connection.row_factory = sqlite3.Row
         else:
@@ -119,8 +118,6 @@ class AuditLog:
                 self._close(connection)
 
     def verify(self) -> AuditVerification:
-        previous_hash = _GENESIS
-        count = 0
         connection = self._connect()
         try:
             rows = connection.execute(
@@ -131,30 +128,109 @@ class AuditLog:
             ).fetchall()
         finally:
             self._close(connection)
+        return _verify_rows(rows)
 
-        for row in rows:
-            count += 1
-            if row["previous_hash"] != previous_hash:
-                return AuditVerification(
-                    False, count, f"broken previous-hash link at event {row['id']}"
-                )
-            try:
-                payload = json.loads(row["payload_json"])
-            except json.JSONDecodeError:
-                return AuditVerification(False, count, f"invalid payload JSON at event {row['id']}")
-            record = {
-                "run_id": row["run_id"],
-                "event": row["event"],
-                "timestamp": row["timestamp"],
-                "payload": payload,
-                "previous_hash": row["previous_hash"],
-            }
-            expected = hashlib.sha256(_canonical(record).encode("utf-8")).hexdigest()
-            if not hmac.compare_digest(expected, row["event_hash"]):
-                return AuditVerification(False, count, f"event hash mismatch at event {row['id']}")
-            previous_hash = row["event_hash"]
+    def create_checkpoint(self, signing_key: bytes) -> dict[str, Any]:
+        """Create an HMAC-authenticated snapshot for storage outside the audit host."""
+        _validate_signing_key(signing_key)
+        verification = self.verify()
+        if not verification.ok:
+            raise ValueError(f"cannot checkpoint an invalid audit chain: {verification.error}")
 
-        return AuditVerification(True, count)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT id, event_hash FROM audit_events ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            self._close(connection)
+
+        payload = {
+            "version": _CHECKPOINT_VERSION,
+            "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "event_count": verification.event_count,
+            "last_event_id": row["id"] if row else None,
+            "last_event_hash": row["event_hash"] if row else _GENESIS,
+        }
+        signature = hmac.new(signing_key, _canonical(payload).encode("utf-8"), hashlib.sha256)
+        return {**payload, "signature": signature.hexdigest()}
+
+    def verify_checkpoint(
+        self, checkpoint: Mapping[str, Any], signing_key: bytes
+    ) -> AuditVerification:
+        """Verify both the local chain and its externally retained signed tail checkpoint."""
+        _validate_signing_key(signing_key)
+        if not isinstance(checkpoint, Mapping):
+            return AuditVerification(False, 0, "checkpoint must be an object")
+
+        payload = {key: value for key, value in checkpoint.items() if key != "signature"}
+        signature = checkpoint.get("signature")
+        if not isinstance(signature, str):
+            return AuditVerification(False, 0, "checkpoint signature is missing")
+        expected = hmac.new(
+            signing_key, _canonical(payload).encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            return AuditVerification(False, 0, "checkpoint signature mismatch")
+        if payload.get("version") != _CHECKPOINT_VERSION:
+            return AuditVerification(False, 0, "unsupported checkpoint version")
+
+        verification = self.verify()
+        if not verification.ok:
+            return verification
+
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT id, event_hash FROM audit_events ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            self._close(connection)
+        current_id = row["id"] if row else None
+        current_hash = row["event_hash"] if row else _GENESIS
+        if (
+            payload.get("event_count") != verification.event_count
+            or payload.get("last_event_id") != current_id
+            or payload.get("last_event_hash") != current_hash
+        ):
+            return AuditVerification(
+                False,
+                verification.event_count,
+                "audit database does not match the signed checkpoint",
+            )
+        return verification
+
+
+def _verify_rows(rows: list[sqlite3.Row]) -> AuditVerification:
+    previous_hash = _GENESIS
+    count = 0
+    for row in rows:
+        count += 1
+        if row["previous_hash"] != previous_hash:
+            return AuditVerification(
+                False, count, f"broken previous-hash link at event {row['id']}"
+            )
+        try:
+            payload = json.loads(row["payload_json"])
+        except (json.JSONDecodeError, TypeError):
+            return AuditVerification(False, count, f"invalid payload JSON at event {row['id']}")
+        record = {
+            "run_id": row["run_id"],
+            "event": row["event"],
+            "timestamp": row["timestamp"],
+            "payload": payload,
+            "previous_hash": row["previous_hash"],
+        }
+        expected = hashlib.sha256(_canonical(record).encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(expected, row["event_hash"]):
+            return AuditVerification(False, count, f"event hash mismatch at event {row['id']}")
+        previous_hash = row["event_hash"]
+    return AuditVerification(True, count)
+
+
+def _validate_signing_key(signing_key: bytes) -> None:
+    if not isinstance(signing_key, bytes) or len(signing_key) < _MIN_SIGNING_KEY_BYTES:
+        raise ValueError("checkpoint signing key must contain at least 32 bytes")
 
 
 def _canonical(value: Any) -> str:
