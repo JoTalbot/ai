@@ -141,7 +141,7 @@ def test_provider_rejects_empty_tool_name(monkeypatch):
     )
     provider = OpenAICompatibleProvider("http://localhost/v1", "test-model")
 
-    with pytest.raises(ProviderError, match="invalid tool name"):
+    with pytest.raises(ProviderError, match="empty tool name"):
         asyncio.run(provider.complete([ChatMessage(role="user", content="hello")], []))
 
 
