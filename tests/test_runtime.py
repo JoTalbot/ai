@@ -1,0 +1,170 @@
+import asyncio
+
+from aegis_ai.builtins import calculator_tool
+from aegis_ai.models import ModelTurn, RiskLevel, RunStatus, ToolCall, ToolSpec
+from aegis_ai.policy import SafePolicy
+from aegis_ai.registry import ToolRegistry
+from aegis_ai.runtime import AgentRuntime
+
+
+class ScriptedProvider:
+    def __init__(self, *turns):
+        self.turns = list(turns)
+        self.messages = []
+
+    async def complete(self, messages, tools):
+        self.messages.append(list(messages))
+        return self.turns.pop(0)
+
+
+def test_read_only_tool_runs_and_returns_final_answer():
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("call-1", "calculator", {"expression": "19 * 23"}),)),
+        ModelTurn(content="The answer is 437."),
+    )
+    registry = ToolRegistry()
+    registry.register(calculator_tool())
+
+    result = asyncio.run(AgentRuntime(provider, registry).run("Calculate 19 times 23."))
+
+    assert result.status is RunStatus.COMPLETED
+    assert result.output == "The answer is 437."
+    assert result.tool_calls == 1
+    tool_messages = [message for message in provider.messages[1] if message.role == "tool"]
+    assert '"result": 437' in tool_messages[0].content
+
+
+def test_write_tool_fails_closed_without_approval():
+    calls = []
+
+    def mutate(arguments):
+        calls.append(arguments["value"])
+        return {"ok": True}
+
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("call-1", "mutate", {"value": "new"}),)),
+        ModelTurn(content="The change was not run."),
+    )
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "mutate",
+            "Change a value",
+            {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+                "additionalProperties": False,
+            },
+            RiskLevel.WRITE,
+            mutate,
+        )
+    )
+
+    result = asyncio.run(AgentRuntime(provider, registry).run("Change the value."))
+
+    assert result.output == "The change was not run."
+    assert calls == []
+    assert "approval_required" in provider.messages[1][-1].content
+
+
+def test_write_tool_runs_only_after_explicit_approval():
+    calls = []
+
+    async def approve(tool, arguments):
+        return tool.name == "mutate" and arguments["value"] == "approved"
+
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("call-1", "mutate", {"value": "approved"}),)),
+        ModelTurn(content="Completed."),
+    )
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "mutate",
+            "Change a value",
+            {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+                "additionalProperties": False,
+            },
+            RiskLevel.WRITE,
+            lambda arguments: calls.append(arguments["value"]),
+        )
+    )
+
+    asyncio.run(AgentRuntime(provider, registry, approval_handler=approve).run("Change the value."))
+
+    assert calls == ["approved"]
+
+
+def test_invalid_arguments_never_reach_handler():
+    calls = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "read",
+            "Read a record",
+            {
+                "type": "object",
+                "properties": {"record_id": {"type": "integer"}},
+                "required": ["record_id"],
+                "additionalProperties": False,
+            },
+            RiskLevel.READ_ONLY,
+            lambda arguments: calls.append(arguments),
+        )
+    )
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("call-1", "read", {"record_id": "not-an-integer"}),)),
+        ModelTurn(content="Rejected."),
+    )
+
+    asyncio.run(AgentRuntime(provider, registry).run("Read a record."))
+
+    assert calls == []
+    assert "invalid_arguments" in provider.messages[1][-1].content
+
+
+def test_destructive_tool_is_denied_even_when_approval_callback_exists():
+    calls = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "wipe",
+            "Delete all records",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            RiskLevel.DESTRUCTIVE,
+            lambda arguments: calls.append(True),
+        )
+    )
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("call-1", "wipe", {}),)),
+        ModelTurn(content="Blocked."),
+    )
+    runtime = AgentRuntime(
+        provider,
+        registry,
+        policy=SafePolicy(),
+        approval_handler=lambda tool, arguments: True,
+    )
+
+    asyncio.run(runtime.run("Delete everything."))
+
+    assert calls == []
+    assert "blocked_by_policy" in provider.messages[1][-1].content
+
+
+def test_agent_stops_at_step_limit():
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("1", "calculator", {"expression": "1+1"}),)),
+        ModelTurn(tool_calls=(ToolCall("2", "calculator", {"expression": "2+2"}),)),
+    )
+    registry = ToolRegistry()
+    registry.register(calculator_tool())
+
+    result = asyncio.run(AgentRuntime(provider, registry, max_steps=2).run("Keep calculating."))
+
+    assert result.status is RunStatus.STEP_LIMIT
+    assert result.steps == 2
