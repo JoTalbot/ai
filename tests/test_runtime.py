@@ -313,7 +313,6 @@ def test_runtime_rejects_non_finite_tool_arguments():
         raise AssertionError("non-finite tool arguments were accepted")
 
 
-
 def test_sync_tool_handler_runs_off_the_event_loop_thread():
     handler_thread = []
     loop_thread = []
