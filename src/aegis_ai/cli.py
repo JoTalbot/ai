@@ -130,7 +130,11 @@ def _verify_audit(database: Path, checkpoint_path: Path | None, key_env: str) ->
         checkpoint = json.loads(checkpoint_path.expanduser().read_text(encoding="utf-8"))
         result = audit.verify_checkpoint(checkpoint, _checkpoint_key(key_env))
     if result.ok:
-        label = "Audit chain and signed checkpoint valid" if checkpoint_path else "Audit chain valid"
+        label = (
+            "Audit chain and signed checkpoint valid"
+            if checkpoint_path
+            else "Audit chain valid"
+        )
         print(f"{label}: {result.event_count} event(s)")
         return 0
     print(
