@@ -130,9 +130,7 @@ def test_provider_rejects_empty_tool_name(monkeypatch):
         "choices": [
             {
                 "message": {
-                    "tool_calls": [
-                        {"id": "call-1", "function": {"name": " ", "arguments": "{}"}}
-                    ]
+                    "tool_calls": [{"id": "call-1", "function": {"name": " ", "arguments": "{}"}}]
                 }
             }
         ]
