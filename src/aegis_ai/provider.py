@@ -50,7 +50,7 @@ class OpenAICompatibleProvider:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "aegis-ai-runtime/0.1.0",
+            "User-Agent": "aegis-ai-runtime/0.2.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

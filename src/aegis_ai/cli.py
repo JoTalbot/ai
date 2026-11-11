@@ -31,6 +31,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--model")
     run.add_argument("--audit-db", type=Path)
     run.add_argument("--max-steps", type=int, default=8)
+    run.add_argument("--max-tool-calls", type=int, default=32)
 
     audit = commands.add_parser("audit", help="inspect the local audit journal")
     audit_commands = audit.add_subparsers(dest="audit_command", required=True)
@@ -52,13 +53,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             if args.max_steps < 1:
                 raise ConfigurationError("--max-steps must be at least 1")
+            if args.max_tool_calls < 1:
+                raise ConfigurationError("--max-tool-calls must be at least 1")
             settings = replace(
                 settings,
                 base_url=args.base_url.rstrip("/") if args.base_url else settings.base_url,
                 model=args.model or settings.model,
                 audit_db=args.audit_db or settings.audit_db,
             )
-            return asyncio.run(_run_prompt(settings, args.prompt, args.max_steps))
+            return asyncio.run(
+                _run_prompt(settings, args.prompt, args.max_steps, args.max_tool_calls)
+            )
     except (ConfigurationError, OSError, RuntimeError, ValueError) as exc:
         print(f"aegis: {exc}", file=sys.stderr)
         return 2
@@ -88,7 +93,12 @@ def _verify_audit(path: Path) -> int:
     return 1
 
 
-async def _run_prompt(settings: Settings, prompt: str, max_steps: int) -> int:
+async def _run_prompt(
+    settings: Settings,
+    prompt: str,
+    max_steps: int,
+    max_tool_calls: int,
+) -> int:
     provider = OpenAICompatibleProvider(
         base_url=settings.base_url,
         model=settings.model,
@@ -103,6 +113,7 @@ async def _run_prompt(settings: Settings, prompt: str, max_steps: int) -> int:
         policy=SafePolicy(),
         audit=AuditLog(settings.audit_db),
         max_steps=max_steps,
+        max_tool_calls=max_tool_calls,
     )
     result = await runtime.run(prompt)
     if result.output:

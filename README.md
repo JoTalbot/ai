@@ -6,7 +6,7 @@ Aegis gives an agent a small, explicit execution boundary: a model can propose t
 
 It is designed to work with local model gateways and hosted OpenAI-compatible APIs without binding the core runtime to one vendor.
 
-> **Status:** early foundation release (0.1.0). The core is intentionally small and conservative. Review the security model before connecting tools that can change external state.
+> **Status:** early release candidate (0.2.0). The core is intentionally small and conservative. Review the security model before connecting tools that can change external state.
 
 ## Why Aegis
 
@@ -47,7 +47,7 @@ Then run:
 
 ```bash
 aegis doctor
-aegis run "Calculate the compound growth of 1000 at 5% for 3 years."
+aegis run "Calculate the compound growth of 1000 at 5% for 3 years." --max-steps 8 --max-tool-calls 32
 aegis audit verify
 ```
 
@@ -119,7 +119,7 @@ order_tool = ToolSpec(
 
 For tools that write data, choose `RiskLevel.WRITE` or `RiskLevel.EXTERNAL`. Aegis will not run them unless an approval callback is supplied and returns `True`. `RiskLevel.DESTRUCTIVE` is denied by the default policy. Do not label a side-effecting tool as read-only.
 
-The default runtime also limits each run to eight model turns and 32 tool calls. Both limits can be adjusted by the host application.
+The default runtime limits each run to eight model turns, 32 tool calls, and 16,384 characters per tool result. The CLI exposes `--max-steps` and `--max-tool-calls`; library hosts can also configure `max_tool_result_chars`.
 
 ## Safety model
 
@@ -163,7 +163,7 @@ ruff format --check .
 pytest
 ```
 
-The CI workflow runs lint, formatting, compilation, and tests across supported Python versions.
+The CI workflow runs lint, formatting, compilation, and tests across supported Python versions. A separate daily workflow audits installed dependencies with `pip-audit` and repeats the quality checks. Both workflows can also be started manually.
 
 ## Project principles
 

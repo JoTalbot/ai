@@ -226,3 +226,27 @@ def test_failed_approval_callback_fails_closed():
 
     assert result.output == "No change was made."
     assert calls == []
+
+
+def test_oversized_tool_result_is_replaced_with_bounded_error():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            "large",
+            "Return a large string",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            RiskLevel.READ_ONLY,
+            lambda arguments: "x" * 1000,
+        )
+    )
+    provider = ScriptedProvider(
+        ModelTurn(tool_calls=(ToolCall("large-1", "large", {}),)),
+        ModelTurn(content="The result was safely bounded."),
+    )
+    runtime = AgentRuntime(provider, registry, max_tool_result_chars=128)
+
+    asyncio.run(runtime.run("Return a large result."))
+
+    tool_message = provider.messages[1][-1]
+    assert tool_message.content == '{"error":"tool_result_exceeded_size_limit"}'
+    assert len(tool_message.content) < 128

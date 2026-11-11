@@ -10,7 +10,7 @@ Aegis is split into five small boundaries. The model is deliberately not the aut
 4. ToolRegistry resolves the name and validates the arguments against the registered schema.
 5. SafePolicy classifies the tool by its declared risk. A write or external action is blocked unless the host supplies an approval callback and that callback approves. Destructive actions are denied by default.
 6. Only after validation and policy approval does the runtime invoke the handler.
-7. The runtime appends tool results to the in-memory conversation and asks the provider for the next turn.
+7. The runtime appends bounded tool results to the in-memory conversation and asks the provider for the next turn.
 8. AuditLog stores minimal metadata about each transition.
 
 ## Modules
@@ -19,7 +19,7 @@ Aegis is split into five small boundaries. The model is deliberately not the aut
 - provider.py: OpenAI-compatible HTTP adapter. No vendor SDK is required.
 - registry.py: tool registration, schema export, argument validation, and invocation.
 - policy.py: deterministic risk decisions.
-- runtime.py: bounded agent loop and approval boundary.
+- runtime.py: bounded agent loop, tool-call budget, result-size cap, and approval boundary.
 - audit.py: SQLite event journal and hash-chain verification.
 - builtins.py: a safe, bounded calculator demonstration.
 - cli.py: local developer interface.
@@ -28,6 +28,10 @@ Aegis is split into five small boundaries. The model is deliberately not the aut
 
 The model output is untrusted input. Tool names, argument JSON, and claims of user consent are never accepted as authority. Registered handlers are trusted code and run with host process permissions. The host application is responsible for authentic approval and operating-system isolation.
 
+Provider endpoint URLs are validated before use. This protects against malformed configuration and accidentally embedded credentials; it does not replace outbound network policy. Deployments should restrict egress to explicitly approved model endpoints.
+
+Tool results are bounded before being returned to the model. This prevents a handler from accidentally flooding the context with an unbounded response. It is not a substitute for validating the semantic content returned by a tool.
+
 ## Failure behavior
 
 - Invalid tool arguments never reach a handler.
@@ -35,8 +39,13 @@ The model output is untrusted input. Tool names, argument JSON, and claims of us
 - Missing approval fails closed.
 - Provider failures are recorded by error type and re-raised.
 - The loop stops after max_steps or max_tool_calls.
+- Tool results exceeding max_tool_result_chars are replaced with a fixed error response.
 - Audit write failures propagate; the runtime does not silently claim an event was recorded.
 
 ## Audit integrity
 
 Each row hashes a canonical JSON representation of its event fields plus the previous row hash. Verification checks both the previous-hash link and the event hash. This detects edits, deletions, reordering, and broken links among retained rows. It cannot detect removal of the final tail without an independent checkpoint, or prove that an attacker with full control of the host did not replace the entire database. Signed checkpoints stored separately are required for those threat models.
+
+## Scheduled verification
+
+The security workflow runs daily and on manual dispatch. It installs the project and development dependencies, audits the installed Python environment with pip-audit, and repeats lint, formatting, compilation, and tests. It reports dependency vulnerabilities by failing the workflow; it does not automatically upgrade packages or deploy changes.
