@@ -31,3 +31,13 @@ def test_audit_chain_detects_payload_tampering(tmp_path):
 
     assert not result.ok
     assert "hash mismatch" in result.error
+
+
+def test_in_memory_audit_keeps_the_same_connection():
+    audit = AuditLog(":memory:")
+    audit.append("run-memory", "started", {"step": 1})
+
+    result = audit.verify()
+
+    assert result.ok
+    assert result.event_count == 1

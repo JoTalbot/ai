@@ -97,8 +97,10 @@ A tool must declare its name, JSON-like input schema, risk level, and handler:
 ```python
 from aegis_ai.models import RiskLevel, ToolSpec
 
+
 async def lookup_order(arguments):
     return {"status": "found", "order_id": arguments["order_id"]}
+
 
 order_tool = ToolSpec(
     name="lookup_order",
@@ -131,9 +133,9 @@ The included CLI does not register side-effecting tools. A custom host may provi
 
 ## Audit trail
 
-Each audit event contains a timestamp, run identifier, event type, a minimal metadata payload, the previous event hash, and its own hash. Verification detects accidental or deliberate edits to the recorded chain.
+Each audit event contains a timestamp, run identifier, event type, a minimal metadata payload, the previous event hash, and its own hash. Verification detects changes to retained events and broken links in the chain.
 
-The default event payload is deliberately metadata-only. It does not store prompts, completions, tool results, or raw tool arguments. The chain is tamper-evident, not tamper-proof: an attacker able to replace the database and every trusted copy can rewrite it. For high-assurance deployments, export signed checkpoints to storage controlled separately from the runtime.
+The default event payload is deliberately metadata-only. It does not store prompts, completions, tool results, or raw tool arguments. The chain is tamper-evident, not tamper-proof: an attacker able to replace the database and every trusted copy can rewrite it. Tail truncation also requires an independently retained checkpoint to detect. For high-assurance deployments, export signed checkpoints to storage controlled separately from the runtime.
 
 ```bash
 aegis audit verify

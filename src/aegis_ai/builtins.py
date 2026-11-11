@@ -111,9 +111,7 @@ def calculator_tool() -> ToolSpec:
         description="Evaluate a bounded arithmetic expression using safe mathematical operations.",
         parameters={
             "type": "object",
-            "properties": {
-                "expression": {"type": "string", "minLength": 1, "maxLength": 256}
-            },
+            "properties": {"expression": {"type": "string", "minLength": 1, "maxLength": 256}},
             "required": ["expression"],
             "additionalProperties": False,
         },

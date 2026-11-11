@@ -69,17 +69,32 @@ class OpenAICompatibleProvider:
             raise ProviderError("provider response exceeded the 8 MiB safety limit")
         try:
             data = json.loads(raw)
-            choice = data["choices"][0]["message"]
-        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
-            raise ProviderError("provider returned an invalid Chat Completions response") from exc
+        except json.JSONDecodeError as exc:
+            raise ProviderError("provider returned invalid JSON") from exc
+        if not isinstance(data, dict):
+            raise ProviderError("provider response must be a JSON object")
+
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ProviderError("provider returned no valid completion choice")
+        choice = choices[0].get("message")
+        if not isinstance(choice, dict):
+            raise ProviderError("provider returned no valid assistant message")
 
         content = choice.get("content")
         if content is not None and not isinstance(content, str):
             raise ProviderError("provider message content must be a string or null")
 
+        raw_calls = choice.get("tool_calls") or []
+        if not isinstance(raw_calls, list):
+            raise ProviderError("provider tool_calls must be a list")
         calls: list[ToolCall] = []
-        for index, item in enumerate(choice.get("tool_calls") or []):
+        for index, item in enumerate(raw_calls):
+            if not isinstance(item, dict):
+                raise ProviderError("provider returned an invalid tool call")
             function = item.get("function") or {}
+            if not isinstance(function, dict):
+                raise ProviderError("provider returned an invalid tool function")
             try:
                 arguments = json.loads(function.get("arguments") or "{}")
             except (json.JSONDecodeError, TypeError) as exc:
@@ -95,6 +110,8 @@ class OpenAICompatibleProvider:
             )
 
         raw_usage = data.get("usage") or {}
+        if not isinstance(raw_usage, dict):
+            raw_usage = {}
         usage = {
             key: value
             for key, value in raw_usage.items()

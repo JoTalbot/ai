@@ -101,9 +101,7 @@ def _validate_value(value: Any, spec: Mapping[str, Any], path: str) -> list[str]
         valid = isinstance(value, int) and not isinstance(value, bool)
     elif expected == "number":
         valid = (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
+            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
         )
     elif expected == "boolean":
         valid = isinstance(value, bool)

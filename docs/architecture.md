@@ -39,4 +39,4 @@ The model output is untrusted input. Tool names, argument JSON, and claims of us
 
 ## Audit integrity
 
-Each row hashes a canonical JSON representation of its event fields plus the previous row hash. Verification checks both the previous-hash link and the event hash. This detects edits, deletions, reordering, and broken links within the retained database. It cannot prove that an attacker with full control of the host did not replace the entire database; independent signed checkpoints are required for that threat model.
+Each row hashes a canonical JSON representation of its event fields plus the previous row hash. Verification checks both the previous-hash link and the event hash. This detects edits, deletions, reordering, and broken links among retained rows. It cannot detect removal of the final tail without an independent checkpoint, or prove that an attacker with full control of the host did not replace the entire database. Signed checkpoints stored separately are required for those threat models.

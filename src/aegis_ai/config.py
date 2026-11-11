@@ -23,8 +23,16 @@ class Settings:
 
     def __post_init__(self) -> None:
         parts = urlsplit(self.base_url)
-        if parts.scheme not in {"http", "https"} or not parts.netloc:
+        if parts.scheme not in {"http", "https"} or not parts.hostname:
             raise ConfigurationError("base_url must be an absolute HTTP or HTTPS URL")
+        try:
+            _ = parts.port
+        except ValueError as exc:
+            raise ConfigurationError("base_url contains an invalid port") from exc
+        if parts.username is not None or parts.password is not None:
+            raise ConfigurationError("credentials must not be embedded in base_url")
+        if parts.query or parts.fragment:
+            raise ConfigurationError("base_url must not contain a query string or fragment")
         if not self.model.strip():
             raise ConfigurationError("model must not be empty")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
