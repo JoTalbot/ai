@@ -11,9 +11,9 @@ RUN groupadd --system --gid 10001 aegis \
     && chown -R 10001:10001 /var/lib/aegis
 
 WORKDIR /app
-COPY dist/*.whl /tmp/aegis.whl
-RUN python -m pip install --no-cache-dir /tmp/aegis.whl \
-    && rm -f /tmp/aegis.whl
+COPY dist/*.whl /tmp/
+RUN python -m pip install --no-cache-dir /tmp/*.whl \
+    && rm -f /tmp/*.whl
 
 USER 10001:10001
 VOLUME ["/var/lib/aegis"]
