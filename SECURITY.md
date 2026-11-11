@@ -31,7 +31,7 @@ Please do not publish exploitable details in a public issue. Use GitHub's privat
 
 ## Safe deployment checklist
 
-- Use a dedicated, unprivileged OS account.
+- Use a dedicated, unprivileged OS account or the hardened container image described in `docs/deployment.md`.
 - Keep API keys and checkpoint signing keys in a secret manager, never in source control.
 - Restrict outbound network access to approved providers.
 - Register only the tools required by the workflow.

@@ -179,7 +179,7 @@ CI runs lint, formatting, compilation, and tests across supported Python version
 4. Audit data should be useful without becoming a second store of sensitive conversations.
 5. Integrations are opt-in. Nothing silently connects to a business system.
 
-See [SECURITY.md](SECURITY.md), [docs/architecture.md](docs/architecture.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
+See [SECURITY.md](SECURITY.md), [docs/architecture.md](docs/architecture.md), [deployment guide](docs/deployment.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

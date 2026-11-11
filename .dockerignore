@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+*.py[cod]
+*.db
+*.sqlite*
+.env
+.env.*
+dist/*.tar.gz
