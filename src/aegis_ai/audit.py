@@ -250,14 +250,23 @@ def _normalize_sensitive_key(key: Any) -> str:
     return "".join(character for character in str(key).casefold() if character.isalnum())
 
 
+def _is_sensitive_key(key: Any) -> bool:
+    normalized = _normalize_sensitive_key(key)
+    for marker in _SENSITIVE_MARKERS:
+        if marker == "token":
+            if normalized == marker or normalized.endswith(marker):
+                return True
+        elif marker in normalized:
+            return True
+    return False
+
+
 def _redact(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
             str(key): (
                 "[REDACTED]"
-                if any(
-                    marker in _normalize_sensitive_key(key) for marker in _SENSITIVE_MARKERS
-                )
+                if _is_sensitive_key(key)
                 else _redact(item)
             )
             for key, item in value.items()
