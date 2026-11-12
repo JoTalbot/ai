@@ -11,7 +11,7 @@ Aegis is split into five small boundaries. The model is deliberately not the aut
 5. SafePolicy classifies the tool by its declared risk. A write or external action is blocked unless the host supplies an approval callback and that callback approves. Destructive actions are denied by default.
 6. Only after validation and policy approval does the runtime invoke the handler.
 7. The runtime appends bounded tool results to the in-memory conversation and asks the provider for the next turn.
-8. AuditLog stores minimal metadata about each transition.
+8. AuditLog stores minimal metadata about each transition and normalizes sensitive metadata keys before redaction.
 
 ## Modules
 
