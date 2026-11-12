@@ -87,3 +87,30 @@ def test_checkpoint_refuses_invalid_audit_chain(tmp_path):
 
     with pytest.raises(ValueError, match="invalid audit chain"):
         audit.create_checkpoint(b"test-checkpoint-key-that-is-at-least-32-bytes")
+
+
+def test_audit_redacts_secret_keys_with_common_naming_styles(tmp_path):
+    database = tmp_path / "audit.db"
+    audit = AuditLog(database)
+    audit.append(
+        "run-1",
+        "configured",
+        {
+            "apiKey": "camel-case-secret",
+            "client-secret": "hyphen-secret",
+            "nested": {"privateKey": "private-secret"},
+            "ordinary_token_count": 4,
+            "model": "local",
+        },
+    )
+
+    with sqlite3.connect(database) as connection:
+        row = connection.execute("SELECT payload_json FROM audit_events").fetchone()
+
+    assert "camel-case-secret" not in row[0]
+    assert "hyphen-secret" not in row[0]
+    assert "private-secret" not in row[0]
+    assert '"ordinary_token_count":4' in row[0]
+    assert '"model":"local"' in row[0]
+    assert row[0].count("[REDACTED]") == 3
+    assert audit.verify().ok
