@@ -6,7 +6,7 @@ Aegis gives an agent a small, explicit execution boundary: a model can propose t
 
 It is designed to work with local model gateways and hosted OpenAI-compatible APIs without binding the core runtime to one vendor.
 
-> **Status:** early release candidate (0.4.0). The core is intentionally small and conservative. Review the security model before connecting tools that can change external state.
+> **Status:** early release candidate (0.4.1). The core is intentionally small and conservative. Review the security model before connecting tools that can change external state.
 
 ## Why Aegis
 
@@ -15,7 +15,7 @@ Most agent demos put model output and real-world actions in the same loop. Aegis
 - **Provider-neutral:** an OpenAI-compatible adapter is included; the runtime depends only on a small protocol.
 - **Safe by default:** read-only tools may run; write and external tools require an explicit approval callback; destructive tools are denied by default.
 - **Validated tool inputs:** a dependency-free JSON Schema subset rejects missing, mistyped, and unexpected arguments before a handler runs.
-- **Auditable:** events are written to SQLite with a SHA-256 hash chain. Prompts, model responses, tool outputs, and argument values are not stored by default.
+- **Auditable:** events are written to SQLite with a SHA-256 hash chain. Prompts, model responses, tool outputs, and argument values are not stored by default. Sensitive metadata keys are normalized before redaction to catch common naming variants.
 - **Independent audit checkpoints:** HMAC-SHA256 checkpoints let an operator detect rollback or tail truncation when the checkpoint and signing key are retained outside the runtime host.
 - **Local-first:** point the provider at a local OpenAI-compatible gateway. No account or vendor SDK is required by the core.
 - **Small attack surface:** no shell, browser, filesystem, or network tools are registered automatically.
