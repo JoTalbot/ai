@@ -264,11 +264,7 @@ def _is_sensitive_key(key: Any) -> bool:
 def _redact(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
-            str(key): (
-                "[REDACTED]"
-                if _is_sensitive_key(key)
-                else _redact(item)
-            )
+            str(key): ("[REDACTED]" if _is_sensitive_key(key) else _redact(item))
             for key, item in value.items()
         }
     if isinstance(value, (list, tuple)):
