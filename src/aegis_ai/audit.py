@@ -14,7 +14,19 @@ from pathlib import Path
 from typing import Any
 
 _GENESIS = "0" * 64
-_SENSITIVE_MARKERS = ("password", "secret", "token", "api_key", "authorization", "credential")
+_SENSITIVE_MARKERS = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "apikey",
+    "authorization",
+    "credential",
+    "privatekey",
+    "accesskey",
+    "refreshkey",
+    "signingkey",
+)
 _CHECKPOINT_VERSION = 1
 _MIN_SIGNING_KEY_BYTES = 32
 
@@ -233,12 +245,19 @@ def _canonical(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _normalize_sensitive_key(key: Any) -> str:
+    """Normalize key spelling so snake_case, camelCase, and hyphenated secrets match."""
+    return "".join(character for character in str(key).casefold() if character.isalnum())
+
+
 def _redact(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
             str(key): (
                 "[REDACTED]"
-                if any(marker in str(key).casefold() for marker in _SENSITIVE_MARKERS)
+                if any(
+                    marker in _normalize_sensitive_key(key) for marker in _SENSITIVE_MARKERS
+                )
                 else _redact(item)
             )
             for key, item in value.items()
