@@ -16,7 +16,7 @@ Please do not publish exploitable details in a public issue. Use GitHub's privat
 - Destructive tools are denied by the default policy.
 - The model cannot grant itself approval by emitting text.
 - The default CLI registers only a bounded calculator tool.
-- Audit events omit prompts, completions, tool outputs, and raw argument values.
+- Audit events omit prompts, completions, tool outputs, and raw argument values. Sensitive metadata keys are normalized before redaction to catch common snake_case, camelCase, and hyphenated variants.
 - Prompt size, provider content, per-call arguments, aggregate per-turn arguments, tool results, and total tool calls are bounded.
 - Signed HMAC checkpoints can detect audit database rollback or tail truncation when retained independently.
 
