@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-11-12
+
+- Normalize sensitive audit payload keys before redaction, covering camelCase, hyphenated, and compact spellings such as `apiKey`, `client-secret`, and `privateKey`.
+- Add regression coverage for nested secret fields while preserving non-sensitive metadata.
+
 ## 0.4.0 - 2026-11-11
 
 - Bound prompt and system-prompt sizes before provider calls.
